@@ -22,6 +22,8 @@
 
 import { readFileSync } from 'node:fs';
 
+import { CATALOG } from './catalog.ts';
+
 export const MODELS_SCHEMA = 'free-model-aggregator-02/models/v1';
 export const PROMPTS_SCHEMA = 'free-model-aggregator-02/prompts/v1';
 
@@ -280,6 +282,20 @@ export function buildCatalog(brief: Brief): CatalogReport {
     if (!model.free || seen.has(model.id)) continue;
     seen.add(model.id);
     models.push({ id: model.id, free: true, context_length: model.context_length });
+  }
+  // Cross-check the brief's model set against the register catalog: the
+  // catalog column scores exactly these fourteen ids. A mismatch is a
+  // drifted brief, so say so loudly — but the brief is the live data and
+  // still wins: serving its models beats serving none.
+  const registered = new Set(CATALOG.map((entry) => entry.id));
+  const missing = CATALOG.filter((entry) => !seen.has(entry.id)).map((entry) => entry.id);
+  const extra = models.filter((model) => !registered.has(model.id)).map((model) => model.id);
+  if (missing.length > 0 || extra.length > 0) {
+    console.error(
+      `catalog drift: brief lists ${models.length} models, register lists 14` +
+        (missing.length > 0 ? `; missing from brief: ${missing.join(', ')}` : '') +
+        (extra.length > 0 ? `; not in register: ${extra.join(', ')}` : ''),
+    );
   }
   if (models.length === 0) return { providers: [] };
   return {
