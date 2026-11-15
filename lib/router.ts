@@ -1,12 +1,12 @@
 // Rating-ordered routing and failover for the -02 gateway.
 //
-// The -02 trial is six prompts against fourteen real free models through one gateway, and the
-// score's quality column (60%) is the rating of the model that really served each prompt over
-// the best rating a free model meeting that prompt could have given. So the routing is simple
-// and strict: for every prompt, try the best free model that meets its requirements first, then
-// the next best, and so on. There is no per-model budget to spread across and no failure
-// schedule to dodge by load-balancing (the sibling -01 contest had both); spreading within a
-// few milli-points of the best would only give quality away.
+// The -02 trial sends six prompts at fourteen real free models through one gateway, and the
+// score's quality column (60%) is the rating of the model that really served each prompt
+// against the best rating a free model meeting that prompt could have given. Routing is
+// therefore simple and strict: for every prompt, try the best free model that meets its
+// requirements first, then the next best, and so on. There is no per-model budget to spread
+// across and no failure schedule to dodge by load-balancing (the sibling -01 contest had
+// both); spreading within a few milli-points of the best would only give quality away.
 //
 // A model that refuses is demoted behind every model that never refused, for the rest of the
 // trial: a 429 is a per-model rate limit on OpenRouter's free tier, and a 5xx is that provider

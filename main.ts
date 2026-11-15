@@ -317,9 +317,9 @@ function poll(server: Server): void {
 async function start(): Promise<void> {
   if (brief.error !== null) log(brief.error);
   if (process.argv.includes('--list')) {
-    // The same document the register body carries, byte for byte: print the one built object and
-    // stop before any server starts. A process whose stdout is not flushed loses the tail, so wait
-    // for it.
+    // Print the one built catalog object, byte for byte the same document the register body
+    // carries, then stop before any server starts. A process whose stdout is not flushed
+    // loses the tail, so wait for the write to finish first.
     const text = `${JSON.stringify(catalog)}\n`;
     await new Promise<void>((resolve) => process.stdout.write(text, () => resolve()));
     process.exit(0);
@@ -336,7 +336,8 @@ async function start(): Promise<void> {
   const address = server.address();
   if (address === null || typeof address === 'string') throw new Error('the server has no port');
   const port = address.port;
-  // 8080 is the env's on one layout; the OS's ephemeral range never holds it, and the guard says so.
+  // 8080 belongs to the env on one layout; the OS's ephemeral range never holds it, so if it
+  // ever shows up here the trial must be restarted rather than served from it.
   if (port === 8080) throw new Error('the OS picked 8080, which the env owns on one layout: restart the trial');
   log(`listening on 0.0.0.0:${port} with ${servedModels().length} free models`);
   await register(port, catalog);
