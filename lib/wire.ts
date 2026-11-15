@@ -260,9 +260,14 @@ export function sseEvent(event: string | null, data: unknown): string {
  * One SSE frame with every data payload's `model` set to `model`, and its blank line kept:
  * comments, `event:` lines and payloads that are not JSON objects pass through untouched. Chat
  * Completions names the model on its chunks; the client sees the id the entry dialled, never the
- * provider's spelling.
+ * provider's spelling. A provider may send the finish reason twice — a bare finish chunk, then a
+ * usage chunk that carries it again (OpenRouter does this with stream_options.include_usage);
+ * only the first finish reason is kept, so the relayed stream carries exactly one finish chunk.
+ * The duplicate keeps its frame (its usage still flows) with its finish_reason set to null: a
+ * second finish chunk would fail the wire's stream-order check. `seen` carries the first-finish
+ * state across the stream's frames.
  */
-function frameWithModel(frame: string, model: string): string {
+function frameWithModel(frame: string, model: string, seen: { finish: boolean }): string {
   const lines = frame.split('\n').map((line) => {
     const trimmed = line.trim();
     if (!trimmed.startsWith('data:')) return line;
@@ -270,7 +275,19 @@ function frameWithModel(frame: string, model: string): string {
     if (payload === '' || payload === '[DONE]') return line;
     try {
       const chunk: unknown = JSON.parse(payload);
-      if (isRecord(chunk)) return `data: ${JSON.stringify({ ...chunk, model })}`;
+      if (isRecord(chunk)) {
+        const out: Json = { ...chunk, model };
+        const choices = Array.isArray(chunk.choices) ? chunk.choices : [];
+        const first = isRecord(choices[0]) ? choices[0] : null;
+        if (first !== null && typeof first.finish_reason === 'string' && first.finish_reason !== '') {
+          if (seen.finish) {
+            out.choices = [{ ...first, finish_reason: null }, ...choices.slice(1)];
+          } else {
+            seen.finish = true;
+          }
+        }
+        return `data: ${JSON.stringify(out)}`;
+      }
     } catch {
       // Not JSON: relay the line as it came.
     }
@@ -289,6 +306,8 @@ export async function* openAIStreamWithModel(upstream: ReadableStream<Uint8Array
   const reader = upstream.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  /** Whether a finish_reason has already been relayed in this stream. */
+  const seen = { finish: false };
   try {
     for (;;) {
       const { value, done } = await reader.read();
@@ -298,12 +317,12 @@ export async function* openAIStreamWithModel(upstream: ReadableStream<Uint8Array
       while (at !== -1) {
         const frame = buffer.slice(0, at);
         buffer = buffer.slice(at + 2);
-        yield frameWithModel(frame, model);
+        yield frameWithModel(frame, model, seen);
         at = buffer.indexOf('\n\n');
       }
     }
     buffer += decoder.decode();
-    if (buffer.trim() !== '') yield frameWithModel(buffer, model);
+    if (buffer.trim() !== '') yield frameWithModel(buffer, model, seen);
   } finally {
     reader.releaseLock();
   }
