@@ -198,6 +198,8 @@ async function answer(
   if (upstream.body === null) {
     return sendError(res, clientWire, 502, clientWire === 'anthropic' ? 'api_error' : 'upstream_error', 'the gateway answered with no body');
   }
+  const promptId = brief.prompts[index]?.id ?? `#${index}`;
+  log(`served ${promptId} with ${served.model.id} (${served.model.rating_milli}) after ${served.failures.length} refusal(s)`);
   const headers = trailHeaders(served);
   if (body.stream === true) {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive', ...headers });
